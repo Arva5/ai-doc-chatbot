@@ -1,0 +1,12 @@
+# Environment
+.env
+ai_env/
+venv/
+__pycache__/
+
+# FAISS index (auto-generated)
+faiss_index/
+
+# OS files
+.DS_Store
+Thumbs.db

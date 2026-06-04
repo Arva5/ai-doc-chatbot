@@ -7,8 +7,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
-from langchain.prompts import PromptTemplate
-from langchain.chains.question_answering import load_qa_chain
+from langchain_core.prompts import PromptTemplate
 
 # ── Load environment variables ──────────────────────────────────────────────
 load_dotenv()
@@ -67,20 +66,20 @@ def get_qa_chain():
         temperature=0.3
     )
 
-    chain = load_qa_chain(llm, chain_type="stuff", prompt=prompt)
-    return chain
+    return prompt | llm
 
 # ── Handle User Query ────────────────────────────────────────────────────────
 def handle_query(user_question):
     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
     docs = db.similarity_search(user_question, k=3)
+    context = "\n\n".join(doc.page_content for doc in docs)
 
     chain = get_qa_chain()
-    response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
+    response = chain.invoke({"context": context, "question": user_question})
 
     st.write("### 🤖 Answer:")
-    st.success(response["output_text"])
+    st.success(response.content)
 
 # ── Sidebar — Upload PDFs ────────────────────────────────────────────────────
 with st.sidebar:

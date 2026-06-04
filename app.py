@@ -14,7 +14,7 @@ from langchain.chains.question_answering import load_qa_chain
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# ── Page Config ──────────────────────────────────────────────────────────────
+# ── Page Config (ONLY ONCE!) ───────────────────────────────────────────────
 st.set_page_config(page_title="AI Doc Chatbot", page_icon="📄", layout="wide")
 st.title("📄 AI Doc Chatbot — Powered by Groq ⚡")
 

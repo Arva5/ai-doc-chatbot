@@ -2,12 +2,11 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 from PyPDF2 import PdfReader
+from groq import Groq
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
 
 # ── Load environment variables ──────────────────────────────────────────────
 load_dotenv()
@@ -34,19 +33,21 @@ def get_text_chunks(text):
     splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     return splitter.split_text(text)
 
-# ── Create FAISS Vector Store ────────────────────────────────────────────────
+# ── Create Lightweight Search Index ─────────────────────────────────────────
 def get_vector_store(chunks):
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    vector_store = FAISS.from_texts(chunks, embedding=embeddings)
-    vector_store.save_local("faiss_index")
+    vectorizer = TfidfVectorizer(stop_words="english")
+    vectors = vectorizer.fit_transform(chunks)
+    st.session_state["chunks"] = chunks
+    st.session_state["vectorizer"] = vectorizer
+    st.session_state["vectors"] = vectors
 
-# ── Build QA Chain with Groq ─────────────────────────────────────────────────
-def get_qa_chain():
+# ── Ask Groq with Retrieved Context ─────────────────────────────────────────
+def ask_groq(context, question):
     if not GROQ_API_KEY:
         st.error("GROQ_API_KEY is missing. Configure it in the app secrets and restart the app.")
         st.stop()
 
-    prompt_template = """
+    prompt = f"""
     Use the context below to answer the question as accurately as possible.
     If the answer is not in the context, say "I don't know based on the provided document."
 
@@ -58,28 +59,34 @@ def get_qa_chain():
 
     Answer:
     """
-    prompt = PromptTemplate(template=prompt_template, input_variables=["context", "question"])
 
-    llm = ChatGroq(
-        api_key=GROQ_API_KEY,
-        model_name="llama-3.1-8b-instant",
-        temperature=0.3
+    client = Groq(api_key=GROQ_API_KEY)
+    response = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
     )
-
-    return prompt | llm
+    return response.choices[0].message.content
 
 # ── Handle User Query ────────────────────────────────────────────────────────
 def handle_query(user_question):
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
-    docs = db.similarity_search(user_question, k=3)
-    context = "\n\n".join(doc.page_content for doc in docs)
+    vectorizer = st.session_state["vectorizer"]
+    vectors = st.session_state["vectors"]
+    chunks = st.session_state["chunks"]
 
-    chain = get_qa_chain()
-    response = chain.invoke({"context": context, "question": user_question})
+    question_vector = vectorizer.transform([user_question])
+    scores = cosine_similarity(question_vector, vectors).flatten()
+    top_indices = scores.argsort()[-3:][::-1]
+    context = "\n\n".join(chunks[i] for i in top_indices if scores[i] > 0)
+
+    if not context:
+        st.warning("I couldn't find relevant text in the processed document.")
+        return
+
+    response = ask_groq(context, user_question)
 
     st.write("### 🤖 Answer:")
-    st.success(response.content)
+    st.success(response)
 
 # ── Sidebar — Upload PDFs ────────────────────────────────────────────────────
 with st.sidebar:
@@ -100,7 +107,7 @@ with st.sidebar:
 user_question = st.text_input("💬 Ask a question about your document:")
 
 if user_question:
-    if os.path.exists("faiss_index"):
+    if "vectors" in st.session_state:
         handle_query(user_question)
     else:
         st.warning("⚠️ Please upload and process your documents first!")

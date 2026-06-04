@@ -18,6 +18,9 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 st.set_page_config(page_title="AI Doc Chatbot", page_icon="📄", layout="wide")
 st.title("📄 AI Doc Chatbot — Powered by Groq ⚡")
 
+if not GROQ_API_KEY:
+    st.warning("Add GROQ_API_KEY in deployment secrets to enable answers.")
+
 # ── Extract text from PDFs ───────────────────────────────────────────────────
 def get_pdf_text(pdf_files):
     text = ""
@@ -40,6 +43,10 @@ def get_vector_store(chunks):
 
 # ── Build QA Chain with Groq ─────────────────────────────────────────────────
 def get_qa_chain():
+    if not GROQ_API_KEY:
+        st.error("GROQ_API_KEY is missing. Configure it in the app secrets and restart the app.")
+        st.stop()
+
     prompt_template = """
     Use the context below to answer the question as accurately as possible.
     If the answer is not in the context, say "I don't know based on the provided document."

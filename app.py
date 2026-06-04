@@ -6,8 +6,6 @@ from groq import Groq
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 # ── Load environment variables ──────────────────────────────────────────────
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -30,8 +28,16 @@ def get_pdf_text(pdf_files):
 
 # ── Split text into chunks ───────────────────────────────────────────────────
 def get_text_chunks(text):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    return splitter.split_text(text)
+    chunk_size = 1000
+    overlap = 200
+    chunks = []
+
+    for start in range(0, len(text), chunk_size - overlap):
+        chunk = text[start:start + chunk_size].strip()
+        if chunk:
+            chunks.append(chunk)
+
+    return chunks
 
 # ── Create Lightweight Search Index ─────────────────────────────────────────
 def get_vector_store(chunks):
